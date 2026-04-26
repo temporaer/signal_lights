@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import logging
 import re
 
 from homeassistant.components.sensor import SensorEntity
@@ -8,6 +9,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DATA_MANAGER, DOMAIN
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _safe_id(value: str) -> str:
@@ -21,13 +24,16 @@ def _b64_url(value: str) -> str:
 class SignalLightsRendererSensor(SensorEntity):
     _attr_should_poll = False
 
-    def __init__(self, renderer):
+    def __init__(self, renderer) -> None:
         self.renderer = renderer
         self._attr_unique_id = f"signal_lights_{renderer.id}"
         self._attr_name = f"Signal Lights {renderer.id}"
 
     async def async_added_to_hass(self) -> None:
         self.renderer.add_listener(self._handle_renderer_update)
+
+    async def async_will_remove_from_hass(self) -> None:
+        self.renderer.remove_listener(self._handle_renderer_update)
 
     def _handle_renderer_update(self) -> None:
         self.async_write_ha_state()
@@ -44,7 +50,7 @@ class SignalLightsRendererSensor(SensorEntity):
 class SignalLightsDiagramSensor(SensorEntity):
     _attr_should_poll = False
 
-    def __init__(self, manager):
+    def __init__(self, manager) -> None:
         self.manager = manager
         self._attr_unique_id = "signal_lights_diagram"
         self._attr_name = "Signal Lights Diagram"
@@ -55,6 +61,10 @@ class SignalLightsDiagramSensor(SensorEntity):
     async def async_added_to_hass(self) -> None:
         for renderer in self.manager.renderers.values():
             renderer.add_listener(self._handle_update)
+
+    async def async_will_remove_from_hass(self) -> None:
+        for renderer in self.manager.renderers.values():
+            renderer.remove_listener(self._handle_update)
 
     def _handle_update(self) -> None:
         self.async_write_ha_state()

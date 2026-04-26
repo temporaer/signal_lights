@@ -9,13 +9,47 @@ authors = [
     { name = "temporaer", email = "temporaer@users.noreply.github.com" },
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.4",
+    "mypy>=1.10",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
 [tool.ruff]
 target-version = "py312"
 line-length = 120
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP"]
+select = [
+    "E", "F", "W",       # pycodestyle + pyflakes
+    "I",                  # isort
+    "UP",                 # pyupgrade
+    "B",                  # bugbear
+    "SIM",                # simplify
+    "RUF",                # ruff-specific
+    "PLR",                # pylint refactor
+    "PIE",                # misc
+    "T20",                # no print
+    "LOG",                # logging
+]
+ignore = [
+    "PLR0913",            # too many arguments — unavoidable for signal params
+    "PLR2004",            # magic numbers in tests are fine
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["PLR2004"]
+"custom_components/signal_lights/sensor.py" = ["PLR0912", "PLR0915"]  # _build_mermaid is inherently complex
 
 [tool.mypy]
 python_version = "3.12"
 ignore_missing_imports = true
+strict = true
+warn_return_any = true
+warn_unused_configs = true

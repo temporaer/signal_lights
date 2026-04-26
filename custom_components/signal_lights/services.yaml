@@ -1,0 +1,96 @@
+push_signal:
+  name: Push Signal
+  description: Push a color signal to a renderer's lights.
+  fields:
+    renderer_id:
+      name: Renderer ID
+      description: The renderer to push the signal to.
+      required: true
+      example: "kitchen"
+      selector:
+        text:
+    signal_id:
+      name: Signal ID
+      description: Unique identifier for this signal.
+      required: true
+      example: "doorbell_ring"
+      selector:
+        text:
+    priority:
+      name: Priority
+      description: Higher priority signals win when multiple are active (0–100).
+      default: 50
+      selector:
+        number:
+          min: 0
+          max: 100
+    color:
+      name: Color
+      description: RGB color as a list of three integers [R, G, B].
+      default: [0, 255, 0]
+      example: "[255, 50, 0]"
+      selector:
+        object:
+    duration:
+      name: Duration
+      description: Duration in seconds for transient signals.
+      default: 3
+      selector:
+        number:
+          min: 1
+          max: 300
+          unit_of_measurement: seconds
+    show_only_on_turn_on:
+      name: Show Only On Turn On
+      description: If true, transient signals only flash when a light turns on.
+      default: true
+      selector:
+        boolean:
+    mode:
+      name: Mode
+      description: "Signal mode: transient (brief flash) or persistent (hold color)."
+      default: "transient"
+      selector:
+        select:
+          options:
+            - "transient"
+            - "persistent"
+    activate_when_off:
+      name: Activate When Off
+      description: If true, temporarily turn on lights that are off to show the signal.
+      default: false
+      selector:
+        boolean:
+
+clear_signal:
+  name: Clear Signal
+  description: Remove a signal from a renderer.
+  fields:
+    renderer_id:
+      name: Renderer ID
+      description: The renderer to clear the signal from.
+      required: true
+      example: "kitchen"
+      selector:
+        text:
+    signal_id:
+      name: Signal ID
+      description: The signal to remove.
+      required: true
+      example: "doorbell_ring"
+      selector:
+        text:
+
+refresh_on_lights:
+  name: Refresh On Lights
+  description: Re-apply current signal/baseline state to lights that are on.
+  fields:
+    entity_ids:
+      name: Entity IDs
+      description: List of light entity IDs to refresh.
+      default: []
+      example: "['light.kitchen_ceiling']"
+      selector:
+        entity:
+          multiple: true
+          domain: light

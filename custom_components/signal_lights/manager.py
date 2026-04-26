@@ -1,14 +1,27 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, time
-from typing import Any, Callable
+from datetime import time
+from typing import Any
 
 from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
 from homeassistant.const import STATE_ON
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.util import dt as dt_util
+
+from .const import (
+    CONF_NIGHT_MODE_ENTITY,
+    DEFAULT_NIGHT_MODE_ENTITY,
+    DOMAIN,
+)
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
@@ -19,7 +32,7 @@ class Signal:
     duration: int = 3
     show_only_on_turn_on: bool = True
     mode: str = "transient"  # transient | persistent
-    source: str = "manual"   # manual | rule:<id>
+    source: str = "manual"  # manual | rule:<id>
     activate_when_off: bool = False
 
 
@@ -38,7 +51,7 @@ class SignalRule:
     activate_when_off: bool = False
 
     @classmethod
-    def from_config(cls, idx: int, data: dict[str, Any]) -> "SignalRule":
+    def from_config(cls, idx: int, data: dict[str, Any]) -> SignalRule:
         return cls(
             rule_id=str(data.get("rule_id", f"rule_{idx}")),
             source_entity=data["source_entity"],
@@ -53,31 +66,59 @@ class SignalRule:
             activate_when_off=bool(data.get("activate_when_off", False)),
         )
 
+    def to_signal(self) -> Signal:
+        """Create a Signal from this rule's parameters."""
+        return Signal(
+            signal_id=self.signal_id,
+            priority=self.priority,
+            color=self.color,
+            duration=self.duration,
+            show_only_on_turn_on=self.show_only_on_turn_on,
+            mode=self.mode,
+            source=f"rule:{self.rule_id}",
+            activate_when_off=self.activate_when_off,
+        )
+
 
 def _clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
 
 
 class Renderer:
-    def __init__(self, hass: HomeAssistant, renderer_id: str, config: dict, lamp_profiles: dict):
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        renderer_id: str,
+        config: dict[str, Any],
+        lamp_profiles: dict[str, Any],
+    ) -> None:
         self.hass = hass
         self.id = renderer_id
-        self.lights = config["lights"]
-        self.baseline_conf = config.get("baseline", {})
-        self.time_window = config.get("time_window", {})
-        self.renderer_profile = config.get("profile")
+        self.lights: list[str] = config["lights"]
+        self.baseline_conf: dict[str, Any] = config.get("baseline", {})
+        self.time_window: dict[str, str] = config.get("time_window", {})
+        self.renderer_profile: str | None = config.get("profile")
         self.lamp_profiles = lamp_profiles or {}
+        self.night_mode_entity: str = config.get(
+            CONF_NIGHT_MODE_ENTITY,
+            lamp_profiles.get(CONF_NIGHT_MODE_ENTITY, DEFAULT_NIGHT_MODE_ENTITY),
+        )
         self.signals: dict[str, Signal] = {}
 
         self._lock = asyncio.Lock()
         self._last_on = False
+        self._transient_gen = 0
         self._listeners: list[Callable[[], None]] = []
-        self._last_notify_key: tuple | None = None
+        self._last_notify_key: tuple[Any, ...] | None = None
 
     def add_listener(self, listener: Callable[[], None]) -> None:
         self._listeners.append(listener)
 
-    def _notify_key(self) -> tuple:
+    def remove_listener(self, listener: Callable[[], None]) -> None:
+        with contextlib.suppress(ValueError):
+            self._listeners.remove(listener)
+
+    def _notify_key(self) -> tuple[Any, ...]:
         transient = self.get_effective_signal("transient")
         persistent = self.get_effective_signal("persistent")
         return (
@@ -90,7 +131,7 @@ class Renderer:
             tuple(sorted(self.signals.keys())),
         )
 
-    def notify(self, force: bool = False) -> None:
+    def notify(self, *, force: bool = False) -> None:
         key = self._notify_key()
         if not force and key == self._last_notify_key:
             return
@@ -105,7 +146,8 @@ class Renderer:
     def any_on(self) -> bool:
         return any(self.is_on(e) for e in self.lights)
 
-    def _parse_time(self, value: str | None) -> time | None:
+    @staticmethod
+    def _parse_time(value: str | None) -> time | None:
         if not value:
             return None
         try:
@@ -114,7 +156,7 @@ class Renderer:
                 return time(parts[0], parts[1], 0)
             if len(parts) == 3:
                 return time(parts[0], parts[1], parts[2])
-        except Exception:
+        except (ValueError, TypeError):
             return None
         return None
 
@@ -125,7 +167,7 @@ class Renderer:
         if start is None or end is None:
             return True
 
-        now = datetime.now().time()
+        now = dt_util.now().time()
 
         if start <= end:
             return start <= now <= end
@@ -155,7 +197,7 @@ class Renderer:
         sun_state = self.hass.states.get("sun.sun")
         elevation = sun_state.attributes.get("elevation", 0) if sun_state else 0
 
-        night = self.hass.states.get("input_boolean.night_mode")
+        night = self.hass.states.get(self.night_mode_entity)
         is_night = night is not None and night.state == "on"
 
         brightness_day = int(profile.get("brightness_day", 100))
@@ -173,9 +215,9 @@ class Renderer:
         elevation_clamped = _clamp(elevation, 0, 90)
 
         if elevation_clamped <= 0:
-            raw_kelvin = kelvin_min
+            raw_kelvin = float(kelvin_min)
         else:
-            raw_kelvin = base - divisor / (1 + gain * (elevation_clamped ** exponent))
+            raw_kelvin = base - divisor / (1 + gain * (elevation_clamped**exponent))
 
         kelvin = int(_clamp(raw_kelvin, kelvin_min, kelvin_max))
 
@@ -213,89 +255,105 @@ class Renderer:
             return None
         return max(signals, key=lambda s: s.priority)
 
+    async def _call_light_service(self, service: str, data: dict[str, Any]) -> None:
+        """Call a light service with error handling."""
+        try:
+            await self.hass.services.async_call(
+                LIGHT_DOMAIN, service, data, blocking=True,
+            )
+        except Exception:
+            _LOGGER.exception(
+                "Failed to call light.%s for renderer %s: %s",
+                service, self.id, data.get("entity_id"),
+            )
+
     async def apply_baseline(self) -> None:
         for light in self.lights:
             baseline = self.get_baseline_for_light(light)
-            await self.hass.services.async_call(
-                LIGHT_DOMAIN,
-                "turn_on",
-                {"entity_id": light, **baseline},
-                blocking=True,
-            )
+            await self._call_light_service("turn_on", {"entity_id": light, **baseline})
 
     async def apply_persistent_signal(self, signal: Signal) -> None:
         baselines = self.get_baselines()
         for light in self.lights:
             baseline = baselines[light]
-            await self.hass.services.async_call(
-                LIGHT_DOMAIN,
+            await self._call_light_service(
                 "turn_on",
                 {
                     "entity_id": light,
                     "rgb_color": list(signal.color),
                     "brightness_pct": baseline.get("brightness_pct", 100),
                 },
-                blocking=True,
             )
 
-    async def _render_transient_locked(self, signal: Signal, previous_on: dict[str, bool] | None = None) -> None:
-        baselines = self.get_baselines()
+    async def _render_transient(self, signal: Signal, previous_on: dict[str, bool] | None = None) -> None:
+        """Render a transient signal: flash color, sleep, restore.
 
+        The lock is released during sleep so other operations aren't blocked.
+        A generation token guards against stale restores.
+        """
+        self._transient_gen += 1
+        my_gen = self._transient_gen
+
+        baselines = self.get_baselines()
         if previous_on is None:
             previous_on = {light: self.is_on(light) for light in self.lights}
 
+        # Phase 1: apply signal color (under lock, acquired by caller)
         for light in self.lights:
             if signal.activate_when_off and not previous_on[light]:
                 baseline = baselines[light]
-                await self.hass.services.async_call(
-                    LIGHT_DOMAIN,
+                await self._call_light_service(
                     "turn_on",
                     {
                         "entity_id": light,
                         "brightness_pct": baseline.get("brightness_pct", 100),
                     },
-                    blocking=True,
                 )
 
         for light in self.lights:
             baseline = baselines[light]
-            await self.hass.services.async_call(
-                LIGHT_DOMAIN,
+            await self._call_light_service(
                 "turn_on",
                 {
                     "entity_id": light,
                     "rgb_color": list(signal.color),
                     "brightness_pct": baseline.get("brightness_pct", 100),
                 },
-                blocking=True,
             )
 
-        await asyncio.sleep(signal.duration)
+        # Phase 2: release lock during sleep
+        self._lock.release()
+        try:
+            await asyncio.sleep(signal.duration)
+        finally:
+            await self._lock.acquire()
+
+        # Phase 3: restore — only if we're still the latest transient
+        if my_gen != self._transient_gen:
+            _LOGGER.debug(
+                "Renderer %s: transient gen %d superseded by %d, skipping restore",
+                self.id, my_gen, self._transient_gen,
+            )
+            return
 
         persistent = self.get_effective_signal("persistent")
         for light in self.lights:
             if signal.activate_when_off and not previous_on[light]:
                 if persistent is not None and self.in_time_window():
                     baseline = baselines[light]
-                    await self.hass.services.async_call(
-                        LIGHT_DOMAIN,
+                    await self._call_light_service(
                         "turn_on",
                         {
                             "entity_id": light,
                             "rgb_color": list(persistent.color),
                             "brightness_pct": baseline.get("brightness_pct", 100),
                         },
-                        blocking=True,
                     )
                 else:
-                    await self.hass.services.async_call(
-                        LIGHT_DOMAIN,
-                        "turn_off",
-                        {"entity_id": light},
-                        blocking=True,
-                    )
+                    await self._call_light_service("turn_off", {"entity_id": light})
 
-    async def _apply_final_state_locked(self) -> None:
+    async def _apply_final_state(self) -> None:
+        """Apply final state. Must be called with self._lock held."""
         persistent = self.get_effective_signal("persistent")
         if persistent is not None and self.in_time_window():
             await self.apply_persistent_signal(persistent)
@@ -303,22 +361,22 @@ class Renderer:
             await self.apply_baseline()
 
     async def handle_light_change(self) -> None:
-        any_on = self.any_on()
-        turned_on = any_on and not self._last_on
-        self._last_on = any_on
-
-        if not turned_on:
-            self.notify()
-            return
-
         async with self._lock:
-            await self._apply_final_state_locked()
+            any_on = self.any_on()
+            turned_on = any_on and not self._last_on
+            self._last_on = any_on
+
+            if not turned_on:
+                self.notify()
+                return
+
+            await self._apply_final_state()
 
             transient = self.get_effective_signal("transient")
             if transient is not None and self.in_time_window() and transient.show_only_on_turn_on:
                 previous_on = {light: self.is_on(light) for light in self.lights}
-                await self._render_transient_locked(transient, previous_on)
-                await self._apply_final_state_locked()
+                await self._render_transient(transient, previous_on)
+                await self._apply_final_state()
 
         self.notify(force=True)
 
@@ -333,21 +391,20 @@ class Renderer:
         async with self._lock:
             if signal.mode == "persistent":
                 if any_on:
-                    await self._apply_final_state_locked()
+                    await self._apply_final_state()
                     did_work = True
             elif signal.mode == "transient":
                 if signal.show_only_on_turn_on:
                     if signal.activate_when_off:
-                        await self._render_transient_locked(signal, previous_on)
+                        await self._render_transient(signal, previous_on)
                         did_work = True
                     else:
                         return
-                else:
-                    if any_on or signal.activate_when_off:
-                        await self._render_transient_locked(signal, previous_on)
-                        if any_on:
-                            await self._apply_final_state_locked()
-                        did_work = True
+                elif any_on or signal.activate_when_off:
+                    await self._render_transient(signal, previous_on)
+                    if any_on:
+                        await self._apply_final_state()
+                    did_work = True
 
         if did_work:
             self.notify(force=True)
@@ -396,10 +453,10 @@ class Renderer:
 
 
 class Manager:
-    def __init__(self, hass: HomeAssistant, config: dict):
+    def __init__(self, hass: HomeAssistant, config: dict[str, Any]) -> None:
         self.hass = hass
         self.renderers: dict[str, Renderer] = {}
-        self.unsubs = []
+        self.unsubs: list[Callable[[], None]] = []
         self.rules: list[SignalRule] = []
 
         self.light_to_renderers: dict[str, list[Renderer]] = {}
@@ -415,20 +472,29 @@ class Manager:
 
         for idx, rule_conf in enumerate(config.get("signal_rules", []), start=1):
             rule = SignalRule.from_config(idx, rule_conf)
+            if any(r not in self.renderers for r in rule.renderers):
+                unknown = [r for r in rule.renderers if r not in self.renderers]
+                _LOGGER.warning(
+                    "Rule %s references unknown renderers: %s (skipping those)",
+                    rule.rule_id, unknown,
+                )
+                rule.renderers = [r for r in rule.renderers if r in self.renderers]
             self.rules.append(rule)
             self.source_entity_to_rules.setdefault(rule.source_entity, []).append(rule)
 
         self._setup_listeners()
         self._apply_all_rules_initial()
+        _LOGGER.info(
+            "Signal Lights initialized: %d renderers, %d rules",
+            len(self.renderers), len(self.rules),
+        )
 
     def _setup_listeners(self) -> None:
         lights = sorted(self.light_to_renderers.keys())
         if lights:
             self.unsubs.append(
                 async_track_state_change_event(
-                    self.hass,
-                    lights,
-                    self._on_light_change,
+                    self.hass, lights, self._on_light_change,
                 )
             )
 
@@ -436,11 +502,16 @@ class Manager:
         if source_entities:
             self.unsubs.append(
                 async_track_state_change_event(
-                    self.hass,
-                    source_entities,
-                    self._on_rule_source_change,
+                    self.hass, source_entities, self._on_rule_source_change,
                 )
             )
+
+    def teardown(self) -> None:
+        """Unsubscribe all event listeners."""
+        for unsub in self.unsubs:
+            unsub()
+        self.unsubs.clear()
+        _LOGGER.debug("Signal Lights manager torn down")
 
     def _apply_all_rules_initial(self) -> None:
         affected_renderers: set[Renderer] = set()
@@ -449,12 +520,12 @@ class Manager:
         for renderer in affected_renderers:
             renderer.notify(force=True)
 
-    async def _on_light_change(self, event) -> None:
+    async def _on_light_change(self, event: Any) -> None:
         entity_id = event.data["entity_id"]
         for renderer in self.light_to_renderers.get(entity_id, []):
             self.hass.async_create_task(renderer.handle_light_change())
 
-    async def _on_rule_source_change(self, event) -> None:
+    async def _on_rule_source_change(self, event: Any) -> None:
         entity_id = event.data["entity_id"]
         for rule in self.source_entity_to_rules.get(entity_id, []):
             await self._apply_rule_async(rule)
@@ -475,16 +546,7 @@ class Manager:
             before = renderer._notify_key()
 
             if active:
-                renderer.signals[rule.signal_id] = Signal(
-                    signal_id=rule.signal_id,
-                    priority=rule.priority,
-                    color=rule.color,
-                    duration=rule.duration,
-                    show_only_on_turn_on=rule.show_only_on_turn_on,
-                    mode=rule.mode,
-                    source=f"rule:{rule.rule_id}",
-                    activate_when_off=rule.activate_when_off,
-                )
+                renderer.signals[rule.signal_id] = rule.to_signal()
             else:
                 existing = renderer.signals.get(rule.signal_id)
                 if existing and existing.source == f"rule:{rule.rule_id}":
@@ -506,16 +568,7 @@ class Manager:
             before = renderer._notify_key()
 
             if active:
-                signal = Signal(
-                    signal_id=rule.signal_id,
-                    priority=rule.priority,
-                    color=rule.color,
-                    duration=rule.duration,
-                    show_only_on_turn_on=rule.show_only_on_turn_on,
-                    mode=rule.mode,
-                    source=f"rule:{rule.rule_id}",
-                    activate_when_off=rule.activate_when_off,
-                )
+                signal = rule.to_signal()
                 renderer.signals[rule.signal_id] = signal
                 await renderer.maybe_render_immediately(signal)
             else:
@@ -524,24 +577,36 @@ class Manager:
                     renderer.signals.pop(rule.signal_id, None)
                     if renderer.any_on():
                         async with renderer._lock:
-                            await renderer._apply_final_state_locked()
+                            await renderer._apply_final_state()
 
             if renderer._notify_key() != before:
                 renderer.notify(force=True)
+
+    def _get_renderer(self, renderer_id: str) -> Renderer:
+        """Get a renderer by ID or raise ServiceValidationError."""
+        renderer = self.renderers.get(renderer_id)
+        if renderer is None:
+            raise ServiceValidationError(
+                f"Unknown renderer_id: {renderer_id}",
+                translation_domain=DOMAIN,
+                translation_key="unknown_renderer",
+                translation_placeholders={"renderer_id": renderer_id},
+            )
+        return renderer
 
     async def push_signal(
         self,
         renderer_id: str,
         signal_id: str,
         priority: int,
-        color,
+        color: list[int] | tuple[int, int, int],
         duration: int,
         show_only_on_turn_on: bool,
         mode: str,
         activate_when_off: bool = False,
     ) -> None:
-        renderer = self.renderers[renderer_id]
-        renderer.signals[signal_id] = Signal(
+        renderer = self._get_renderer(renderer_id)
+        signal = Signal(
             signal_id=signal_id,
             priority=priority,
             color=tuple(color),
@@ -551,17 +616,23 @@ class Manager:
             source="manual",
             activate_when_off=activate_when_off,
         )
-        await renderer.maybe_render_immediately(renderer.signals[signal_id])
+        renderer.signals[signal_id] = signal
+        _LOGGER.debug(
+            "Pushed signal %s to renderer %s (priority=%d, mode=%s)",
+            signal_id, renderer_id, priority, mode,
+        )
+        await renderer.maybe_render_immediately(signal)
         renderer.notify(force=True)
 
     async def clear_signal(self, renderer_id: str, signal_id: str) -> None:
-        renderer = self.renderers[renderer_id]
+        renderer = self._get_renderer(renderer_id)
         existed = signal_id in renderer.signals
         renderer.signals.pop(signal_id, None)
-        if existed and renderer.any_on():
-            async with renderer._lock:
-                await renderer._apply_final_state_locked()
         if existed:
+            _LOGGER.debug("Cleared signal %s from renderer %s", signal_id, renderer_id)
+            if renderer.any_on():
+                async with renderer._lock:
+                    await renderer._apply_final_state()
             renderer.notify(force=True)
 
     async def refresh_on_lights(self, entity_ids: list[str]) -> None:
@@ -578,13 +649,12 @@ class Manager:
                 continue
 
             if not any(
-                self.hass.states.get(e) is not None
-                and self.hass.states.get(e).state == STATE_ON
+                self.hass.states.get(e) is not None and self.hass.states.get(e).state == STATE_ON
                 for e in relevant
             ):
                 continue
 
             async with renderer._lock:
-                await renderer._apply_final_state_locked()
+                await renderer._apply_final_state()
 
             renderer.notify(force=True)
