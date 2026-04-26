@@ -94,3 +94,45 @@ refresh_on_lights:
         entity:
           multiple: true
           domain: light
+
+dump_state:
+  name: Dump State
+  description: >-
+    Log a full diagnostic snapshot of all renderers at INFO level.
+    Check your HA logs after calling this service.
+
+test_signal:
+  name: Test Signal
+  description: >-
+    Flash a test color on a renderer without registering a persistent signal.
+    The signal auto-clears after the duration. Great for testing colors from Developer Tools.
+  fields:
+    renderer_id:
+      name: Renderer ID
+      description: The renderer to test on.
+      required: true
+      example: "kitchen"
+      selector:
+        text:
+    color:
+      name: Color
+      description: RGB color as a list of three integers [R, G, B].
+      default: [0, 255, 0]
+      example: "[255, 50, 0]"
+      selector:
+        object:
+    duration:
+      name: Duration
+      description: How long to hold the test color (seconds).
+      default: 3
+      selector:
+        number:
+          min: 1
+          max: 300
+          unit_of_measurement: seconds
+    activate_when_off:
+      name: Activate When Off
+      description: If true, temporarily turn on lights that are off to show the test color.
+      default: false
+      selector:
+        boolean:

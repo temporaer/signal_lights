@@ -3,12 +3,14 @@ from __future__ import annotations
 import base64
 import logging
 import re
+from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DATA_MANAGER, DOMAIN
+from .manager import Manager, Renderer, SignalRule
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -24,7 +26,7 @@ def _b64_url(value: str) -> str:
 class SignalLightsRendererSensor(SensorEntity):
     _attr_should_poll = False
 
-    def __init__(self, renderer) -> None:
+    def __init__(self, renderer: Renderer) -> None:
         self.renderer = renderer
         self._attr_unique_id = f"signal_lights_{renderer.id}"
         self._attr_name = f"Signal Lights {renderer.id}"
@@ -39,22 +41,22 @@ class SignalLightsRendererSensor(SensorEntity):
         self.async_write_ha_state()
 
     @property
-    def native_value(self):
+    def native_value(self) -> str:
         return self.renderer.state
 
     @property
-    def extra_state_attributes(self):
+    def extra_state_attributes(self) -> dict[str, Any]:
         return self.renderer.attributes
 
 
 class SignalLightsDiagramSensor(SensorEntity):
     _attr_should_poll = False
 
-    def __init__(self, manager) -> None:
+    def __init__(self, manager: Manager) -> None:
         self.manager = manager
         self._attr_unique_id = "signal_lights_diagram"
         self._attr_name = "Signal Lights Diagram"
-        self._cache_key: tuple | None = None
+        self._cache_key: tuple[Any, ...] | None = None
         self._cache_full: str | None = None
         self._cache_active: str | None = None
 
@@ -70,10 +72,10 @@ class SignalLightsDiagramSensor(SensorEntity):
         self.async_write_ha_state()
 
     @property
-    def native_value(self):
+    def native_value(self) -> str:
         return "ready"
 
-    def _make_cache_key(self) -> tuple:
+    def _make_cache_key(self) -> tuple[Any, ...]:
         parts = []
         for renderer_id in sorted(self.manager.renderers):
             renderer = self.manager.renderers[renderer_id]
@@ -99,7 +101,7 @@ class SignalLightsDiagramSensor(SensorEntity):
         self._cache_active = self._build_mermaid(active_only=True)
 
     @property
-    def extra_state_attributes(self):
+    def extra_state_attributes(self) -> dict[str, Any]:
         self._ensure_cache()
         mermaid = self._cache_full or "flowchart LR\n  empty[empty]"
         active_mermaid = self._cache_active or "flowchart LR\n  empty[empty]"
@@ -140,8 +142,8 @@ class SignalLightsDiagramSensor(SensorEntity):
             "classDef lightOff fill:#ffffff,stroke:#94a3b8,color:#334155;",
         ]
 
-        included_renderers: dict[str, object] = {}
-        included_rules = []
+        included_renderers: dict[str, Renderer] = {}
+        included_rules: list[SignalRule] = []
 
         for rule in self.manager.rules:
             rule_is_active_anywhere = False
@@ -249,11 +251,13 @@ class SignalLightsDiagramSensor(SensorEntity):
 
 async def async_setup_platform(
     hass: HomeAssistant,
-    config,
+    config: dict[str, Any],
     async_add_entities: AddEntitiesCallback,
-    discovery_info=None,
+    discovery_info: dict[str, Any] | None = None,
 ) -> None:
-    manager = hass.data[DOMAIN][DATA_MANAGER]
-    entities = [SignalLightsRendererSensor(renderer) for renderer in manager.renderers.values()]
+    manager: Manager = hass.data[DOMAIN][DATA_MANAGER]
+    entities: list[SensorEntity] = [
+        SignalLightsRendererSensor(renderer) for renderer in manager.renderers.values()
+    ]
     entities.append(SignalLightsDiagramSensor(manager))
     async_add_entities(entities)

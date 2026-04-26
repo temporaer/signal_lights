@@ -4,6 +4,13 @@ DATA_MANAGER = "manager"
 SERVICE_PUSH_SIGNAL = "push_signal"
 SERVICE_CLEAR_SIGNAL = "clear_signal"
 SERVICE_REFRESH_ON_LIGHTS = "refresh_on_lights"
+SERVICE_DUMP_STATE = "dump_state"
+SERVICE_TEST_SIGNAL = "test_signal"
+
+EVENT_SIGNAL_PUSHED = "signal_lights_signal_pushed"
+EVENT_SIGNAL_CLEARED = "signal_lights_signal_cleared"
+EVENT_SIGNAL_RENDERED = "signal_lights_signal_rendered"
+EVENT_SIGNAL_SKIPPED = "signal_lights_signal_skipped"
 
 CONF_RENDERERS = "renderers"
 CONF_LIGHTS = "lights"

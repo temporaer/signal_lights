@@ -37,6 +37,7 @@ class FakeHass:
         self.data: dict[str, Any] = {}
         self.bus = MagicMock()
         self.bus.async_listen = MagicMock(return_value=lambda: None)
+        self.bus.async_fire = MagicMock()
         self._tasks: list[Any] = []
 
     def set_state(self, entity_id: str, state: str, attributes: dict[str, Any] | None = None) -> None:

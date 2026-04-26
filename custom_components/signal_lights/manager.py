@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from datetime import time
 from typing import Any
 
-from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
 from homeassistant.const import STATE_ON
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
@@ -19,7 +18,12 @@ from .const import (
     CONF_NIGHT_MODE_ENTITY,
     DEFAULT_NIGHT_MODE_ENTITY,
     DOMAIN,
+    EVENT_SIGNAL_CLEARED,
+    EVENT_SIGNAL_PUSHED,
+    EVENT_SIGNAL_RENDERED,
 )
+
+LIGHT_DOMAIN = "light"
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -110,6 +114,9 @@ class Renderer:
         self._transient_gen = 0
         self._listeners: list[Callable[[], None]] = []
         self._last_notify_key: tuple[Any, ...] | None = None
+        self._last_rendered_signal_id: str | None = None
+        self._last_rendered_at: str | None = None
+        self._last_rendered_mode: str | None = None
 
     def add_listener(self, listener: Callable[[], None]) -> None:
         self._listeners.append(listener)
@@ -138,6 +145,18 @@ class Renderer:
         self._last_notify_key = key
         for listener in self._listeners:
             listener()
+
+    def _fire_event(self, event_type: str, signal_id: str, **extra: Any) -> None:
+        """Fire an event on the HA event bus."""
+        data = {"renderer_id": self.id, "signal_id": signal_id, **extra}
+        self.hass.bus.async_fire(event_type, data)
+        _LOGGER.debug("Fired %s: %s", event_type, data)
+
+    def _record_render(self, signal: Signal) -> None:
+        """Record last rendered signal for sensor attributes."""
+        self._last_rendered_signal_id = signal.signal_id
+        self._last_rendered_at = dt_util.now().isoformat()
+        self._last_rendered_mode = signal.mode
 
     def is_on(self, entity_id: str) -> bool:
         state = self.hass.states.get(entity_id)
@@ -284,6 +303,15 @@ class Renderer:
                     "brightness_pct": baseline.get("brightness_pct", 100),
                 },
             )
+        self._record_render(signal)
+        self._fire_event(
+            EVENT_SIGNAL_RENDERED,
+            signal.signal_id,
+            mode="persistent",
+            priority=signal.priority,
+            color=list(signal.color),
+            source=signal.source,
+        )
 
     async def _render_transient(self, signal: Signal, previous_on: dict[str, bool] | None = None) -> None:
         """Render a transient signal: flash color, sleep, restore.
@@ -320,6 +348,17 @@ class Renderer:
                     "brightness_pct": baseline.get("brightness_pct", 100),
                 },
             )
+
+        self._record_render(signal)
+        self._fire_event(
+            EVENT_SIGNAL_RENDERED,
+            signal.signal_id,
+            mode="transient",
+            priority=signal.priority,
+            color=list(signal.color),
+            duration=signal.duration,
+            source=signal.source,
+        )
 
         # Phase 2: release lock during sleep
         self._lock.release()
@@ -440,6 +479,9 @@ class Renderer:
             "effective_persistent_priority": persistent.priority if persistent else None,
             "baselines": self.get_baselines(),
             "renderer_profile": self.renderer_profile,
+            "last_rendered_signal_id": self._last_rendered_signal_id,
+            "last_rendered_at": self._last_rendered_at,
+            "last_rendered_mode": self._last_rendered_mode,
         }
 
 
@@ -475,6 +517,7 @@ class Manager:
 
         self._setup_listeners()
         self._apply_all_rules_initial()
+        self._validate_config()
         _LOGGER.info(
             "Signal Lights initialized: %d renderers, %d rules",
             len(self.renderers), len(self.rules),
@@ -561,11 +604,20 @@ class Manager:
             if active:
                 signal = rule.to_signal()
                 renderer.signals[rule.signal_id] = signal
+                renderer._fire_event(
+                    EVENT_SIGNAL_PUSHED, rule.signal_id,
+                    mode=rule.mode, priority=rule.priority,
+                    source=f"rule:{rule.rule_id}",
+                )
                 await renderer.maybe_render_immediately(signal)
             else:
                 existing = renderer.signals.get(rule.signal_id)
                 if existing and existing.source == f"rule:{rule.rule_id}":
                     renderer.signals.pop(rule.signal_id, None)
+                    renderer._fire_event(
+                        EVENT_SIGNAL_CLEARED, rule.signal_id,
+                        source=f"rule:{rule.rule_id}",
+                    )
                     if renderer.any_on():
                         async with renderer._lock:
                             await renderer._apply_final_state()
@@ -600,7 +652,7 @@ class Manager:
         signal = Signal(
             signal_id=signal_id,
             priority=priority,
-            color=tuple(color),
+            color=(color[0], color[1], color[2]),
             duration=duration,
             show_only_on_turn_on=show_only_on_turn_on,
             mode=mode,
@@ -612,6 +664,10 @@ class Manager:
             "Pushed signal %s to renderer %s (priority=%d, mode=%s)",
             signal_id, renderer_id, priority, mode,
         )
+        renderer._fire_event(
+            EVENT_SIGNAL_PUSHED, signal_id,
+            mode=mode, priority=priority, color=list(color), source="manual",
+        )
         await renderer.maybe_render_immediately(signal)
         renderer.notify(force=True)
 
@@ -621,6 +677,7 @@ class Manager:
         renderer.signals.pop(signal_id, None)
         if existed:
             _LOGGER.debug("Cleared signal %s from renderer %s", signal_id, renderer_id)
+            renderer._fire_event(EVENT_SIGNAL_CLEARED, signal_id)
             if renderer.any_on():
                 async with renderer._lock:
                     await renderer._apply_final_state()
@@ -640,7 +697,7 @@ class Manager:
                 continue
 
             if not any(
-                self.hass.states.get(e) is not None and self.hass.states.get(e).state == STATE_ON
+                (s := self.hass.states.get(e)) is not None and s.state == STATE_ON
                 for e in relevant
             ):
                 continue
@@ -649,3 +706,92 @@ class Manager:
                 await renderer._apply_final_state()
 
             renderer.notify(force=True)
+
+    def dump_state(self) -> dict[str, Any]:
+        """Return a full diagnostic snapshot of all renderers."""
+        snapshot: dict[str, Any] = {}
+        for rid, renderer in self.renderers.items():
+            transient = renderer.get_effective_signal("transient")
+            persistent = renderer.get_effective_signal("persistent")
+            snapshot[rid] = {
+                "lights": renderer.lights,
+                "any_on": renderer.any_on(),
+                "in_time_window": renderer.in_time_window(),
+                "signal_count": len(renderer.signals),
+                "signals": {
+                    sid: {"priority": s.priority, "mode": s.mode, "source": s.source}
+                    for sid, s in renderer.signals.items()
+                },
+                "effective_transient": transient.signal_id if transient else None,
+                "effective_persistent": persistent.signal_id if persistent else None,
+                "baselines": renderer.get_baselines(),
+                "last_rendered_signal_id": renderer._last_rendered_signal_id,
+                "last_rendered_at": renderer._last_rendered_at,
+            }
+        _LOGGER.info("Signal Lights state dump:\n%s", snapshot)
+        return snapshot
+
+    async def test_signal(
+        self,
+        renderer_id: str,
+        color: list[int] | tuple[int, int, int],
+        duration: int,
+        activate_when_off: bool = False,
+    ) -> None:
+        """Flash a test signal without storing it. Auto-clears after rendering."""
+        renderer = self._get_renderer(renderer_id)
+        signal = Signal(
+            signal_id="__test__",
+            priority=100,
+            color=(color[0], color[1], color[2]),
+            duration=duration,
+            show_only_on_turn_on=False,
+            mode="transient",
+            source="test",
+            activate_when_off=activate_when_off,
+        )
+        _LOGGER.info(
+            "Test signal on renderer %s: color=%s duration=%ds",
+            renderer_id, list(color), duration,
+        )
+        previous_on = {light: renderer.is_on(light) for light in renderer.lights}
+        any_on = any(previous_on.values())
+        async with renderer._lock:
+            await renderer._render_transient(signal, previous_on)
+            if any_on:
+                await renderer._apply_final_state()
+        renderer.notify(force=True)
+
+    def _validate_config(self) -> None:
+        """Log warnings for common config issues at startup."""
+        for rule in self.rules:
+            state = self.hass.states.get(rule.source_entity)
+            if state is None:
+                _LOGGER.warning(
+                    "Rule %s: source_entity '%s' does not exist (yet). "
+                    "Signal will activate once the entity appears.",
+                    rule.rule_id, rule.source_entity,
+                )
+
+        for rid, renderer in self.renderers.items():
+            for light in renderer.lights:
+                state = self.hass.states.get(light)
+                if state is None:
+                    _LOGGER.warning(
+                        "Renderer %s: light '%s' does not exist (yet).",
+                        rid, light,
+                    )
+
+        # Warn about duplicate signal_ids per renderer
+        for rid, _renderer in self.renderers.items():
+            signal_sources: dict[str, list[str]] = {}
+            for rule in self.rules:
+                if rid in rule.renderers:
+                    signal_sources.setdefault(rule.signal_id, []).append(rule.rule_id)
+            for sid, rule_ids in signal_sources.items():
+                if len(rule_ids) > 1:
+                    _LOGGER.warning(
+                        "Renderer %s: signal_id '%s' is used by multiple rules (%s). "
+                        "They will overwrite each other.",
+                        rid, sid, ", ".join(rule_ids),
+                    )

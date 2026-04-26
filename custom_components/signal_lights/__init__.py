@@ -20,8 +20,10 @@ from .const import (
     DEFAULT_PRIORITY,
     DOMAIN,
     SERVICE_CLEAR_SIGNAL,
+    SERVICE_DUMP_STATE,
     SERVICE_PUSH_SIGNAL,
     SERVICE_REFRESH_ON_LIGHTS,
+    SERVICE_TEST_SIGNAL,
 )
 from .manager import Manager
 
@@ -83,6 +85,13 @@ REFRESH_SCHEMA = vol.Schema({
     vol.Optional("entity_ids", default=[]): vol.All(cv.ensure_list, [cv.entity_id]),
 })
 
+TEST_SIGNAL_SCHEMA = vol.Schema({
+    vol.Required("renderer_id"): str,
+    vol.Optional("color", default=DEFAULT_COLOR): vol.All(list, vol.Length(min=3, max=3)),
+    vol.Optional("duration", default=DEFAULT_DURATION): vol.All(int, vol.Range(min=1, max=300)),
+    vol.Optional("activate_when_off", default=False): bool,
+})
+
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     conf = config.get(DOMAIN, {})
@@ -116,9 +125,22 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         entity_ids = call.data.get("entity_ids", [])
         await manager.refresh_on_lights(entity_ids)
 
+    async def handle_dump_state(call: ServiceCall) -> None:
+        manager.dump_state()
+
+    async def handle_test_signal(call: ServiceCall) -> None:
+        await manager.test_signal(
+            call.data["renderer_id"],
+            call.data.get("color", DEFAULT_COLOR),
+            call.data.get("duration", DEFAULT_DURATION),
+            call.data.get("activate_when_off", False),
+        )
+
     hass.services.async_register(DOMAIN, SERVICE_PUSH_SIGNAL, handle_push, schema=PUSH_SIGNAL_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_CLEAR_SIGNAL, handle_clear, schema=CLEAR_SIGNAL_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_REFRESH_ON_LIGHTS, handle_refresh, schema=REFRESH_SCHEMA)
+    hass.services.async_register(DOMAIN, SERVICE_DUMP_STATE, handle_dump_state)
+    hass.services.async_register(DOMAIN, SERVICE_TEST_SIGNAL, handle_test_signal, schema=TEST_SIGNAL_SCHEMA)
 
     _LOGGER.info("Signal Lights setup complete")
     return True
@@ -133,7 +155,10 @@ async def async_unload(hass: HomeAssistant) -> bool:
     if manager:
         manager.teardown()
 
-    for service_name in (SERVICE_PUSH_SIGNAL, SERVICE_CLEAR_SIGNAL, SERVICE_REFRESH_ON_LIGHTS):
+    for service_name in (
+        SERVICE_PUSH_SIGNAL, SERVICE_CLEAR_SIGNAL, SERVICE_REFRESH_ON_LIGHTS,
+        SERVICE_DUMP_STATE, SERVICE_TEST_SIGNAL,
+    ):
         hass.services.async_remove(DOMAIN, service_name)
 
     hass.data.pop(DOMAIN, None)
