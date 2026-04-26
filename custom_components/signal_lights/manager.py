@@ -403,7 +403,9 @@ class Renderer:
             await self._apply_final_state()
 
             transient = self.get_effective_signal("transient")
-            if transient is not None and self.in_time_window() and transient.show_only_on_turn_on:
+            if transient is not None and transient.show_only_on_turn_on and (
+                self.in_time_window() or transient.activate_when_off
+            ):
                 previous_on = {light: self.is_on(light) for light in self.lights}
                 await self._render_transient(transient, previous_on)
                 await self._apply_final_state()
@@ -411,7 +413,10 @@ class Renderer:
         self.notify(force=True)
 
     async def maybe_render_immediately(self, signal: Signal) -> None:
-        if not self.in_time_window():
+        in_window = self.in_time_window()
+        # activate_when_off transients bypass the time window — the user
+        # explicitly asked to wake sleeping lights for this signal.
+        if not in_window and not (signal.mode == "transient" and signal.activate_when_off):
             return
 
         previous_on = {light: self.is_on(light) for light in self.lights}

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock
 
-from custom_components.signal_lights.manager import Signal
+from custom_components.signal_lights.manager import Manager, Signal
 
 from .conftest import FakeHass
 
@@ -171,3 +171,72 @@ async def test_teardown(hass: FakeHass, manager):
 
     mgr.teardown()
     assert len(mgr.unsubs) == 0
+
+
+# ── Time window bypass for activate_when_off ──
+
+
+async def test_activate_when_off_transient_bypasses_time_window(hass: FakeHass):
+    """activate_when_off transients should fire even outside the time window."""
+    config = {
+        "renderers": {
+            "hall": {
+                "lights": ["light.hall"],
+                "time_window": {"start": "00:00", "end": "00:01"},  # almost never active
+            },
+        },
+    }
+    hass.set_state("light.hall", "off")
+    mgr = Manager(hass, config)  # type: ignore[arg-type]
+
+    # Signal with activate_when_off should bypass time_window
+    await mgr.push_signal(
+        "hall", "wake_flash", 50, [0, 255, 0], 0,
+        show_only_on_turn_on=False, mode="transient", activate_when_off=True,
+    )
+    # Should have called light services (woke the light)
+    assert hass.services.async_call.call_count > 0
+
+
+async def test_normal_transient_blocked_outside_time_window(hass: FakeHass):
+    """Normal transients (no activate_when_off) are still blocked outside time window."""
+    config = {
+        "renderers": {
+            "hall": {
+                "lights": ["light.hall"],
+                "time_window": {"start": "00:00", "end": "00:01"},
+            },
+        },
+    }
+    hass.set_state("light.hall", "on")
+    mgr = Manager(hass, config)  # type: ignore[arg-type]
+    hass.services.async_call.reset_mock()
+
+    await mgr.push_signal(
+        "hall", "normal_flash", 50, [255, 0, 0], 0,
+        show_only_on_turn_on=False, mode="transient", activate_when_off=False,
+    )
+    # Signal stored but not rendered (outside time window)
+    assert "normal_flash" in mgr.renderers["hall"].signals
+    assert hass.services.async_call.call_count == 0
+
+
+async def test_persistent_signal_blocked_outside_time_window(hass: FakeHass):
+    """Persistent signals should still be blocked outside time window."""
+    config = {
+        "renderers": {
+            "hall": {
+                "lights": ["light.hall"],
+                "time_window": {"start": "00:00", "end": "00:01"},
+            },
+        },
+    }
+    hass.set_state("light.hall", "on")
+    mgr = Manager(hass, config)  # type: ignore[arg-type]
+    hass.services.async_call.reset_mock()
+
+    await mgr.push_signal(
+        "hall", "persistent_glow", 50, [0, 255, 0], 3,
+        show_only_on_turn_on=True, mode="persistent", activate_when_off=False,
+    )
+    assert hass.services.async_call.call_count == 0

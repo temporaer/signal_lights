@@ -11,7 +11,7 @@ A Home Assistant custom integration that overlays priority-based **signal colors
 - **Persistent signals** — hold a color until cleared.
 - **Priority system** — highest-priority signal wins when multiple are active.
 - **Signal rules** — declarative YAML rules that push/clear signals based on entity state changes.
-- **Time windows** — restrict signal rendering to specific hours.
+- **Time windows** — restrict signal rendering to specific hours. Signals with `activate_when_off: true` bypass the time window so they can wake sleeping lights anytime.
 - **Lamp profiles** — per-light brightness/color-temperature curves driven by sun elevation and night mode.
 - **Mermaid diagram sensor** — auto-generated live diagram of renderers, signals, and lights.
 
@@ -200,6 +200,63 @@ signal_lights:
 ```
 
 If both the washing machine and the doorbell fire at the same time, the doorbell signal (priority 80) wins and is the one rendered. The washing signal stays queued — if you turn the light on again after the doorbell clears, you'll still get the green flash for the washing machine.
+
+### "Signal even when it's bright" — daytime flash-and-off
+
+Some lights stay off during the day (it's bright enough), but you still want them to flash for signals. Use `activate_when_off: true` with `show_only_on_turn_on: false` — these signals bypass the `time_window` so they work 24/7:
+
+```yaml
+signal_lights:
+  renderers:
+    hallway:
+      lights: [light.hallway_ceiling]
+      baseline:
+        mode: template
+      time_window:
+        start: "17:00"
+        end: "08:00"         # only color lights at night
+  signal_rules:
+    - source_entity: binary_sensor.washing_machine
+      signal_id: washing_done
+      renderers: [hallway]
+      color: [0, 255, 0]
+      mode: transient
+      show_only_on_turn_on: false   # flash immediately
+      activate_when_off: true       # wake the light even if off
+      duration: 5
+```
+
+**What happens at 2pm (light is off, outside time window):**
+
+1. `binary_sensor.washing_machine` turns `on`.
+2. Rule pushes `washing_done` (transient, `activate_when_off`).
+3. Light wakes up, flashes green for 5 seconds.
+4. Light turns back off (it was off before the signal).
+
+The `time_window` still restricts baseline and persistent coloring to nighttime — only `activate_when_off` transients bypass it.
+
+Use a separate HA automation to turn the light on/off based on brightness:
+
+```yaml
+automation:
+  - alias: "Hallway on when dark"
+    trigger:
+      platform: numeric_state
+      entity_id: sensor.hallway_lux
+      below: 30
+    action:
+      service: light.turn_on
+      target: { entity_id: light.hallway_ceiling }
+
+  - alias: "Hallway off when bright"
+    trigger:
+      platform: numeric_state
+      entity_id: sensor.hallway_lux
+      above: 50
+    action:
+      service: light.turn_off
+      target: { entity_id: light.hallway_ceiling }
+```
 
 ## License
 
