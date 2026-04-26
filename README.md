@@ -72,6 +72,135 @@ signal_lights:
 | `signal_lights.clear_signal` | Remove a signal from a renderer |
 | `signal_lights.refresh_on_lights` | Re-apply current state to lights that are on |
 
+## Examples
+
+### "Washing machine done" — flash when you walk past
+
+You want the hallway light to briefly flash green when the washing machine finishes, but only when somebody actually turns on or walks past the light (i.e. it transitions from off → on). The flash shouldn't wake up a dark hallway on its own.
+
+**Setup:** You have a `binary_sensor.washing_machine` that turns `on` when a cycle completes (e.g. via a power-monitoring smart plug).
+
+```yaml
+signal_lights:
+  renderers:
+    hallway:
+      lights:
+        - light.hallway
+      time_window:
+        start: "06:00"
+        end: "23:00"
+
+  signal_rules:
+    - rule_id: washing_done
+      source_entity: binary_sensor.washing_machine
+      active_state: "on"
+      renderers: [hallway]
+      signal_id: washing_done
+      color: [0, 255, 50]       # green
+      duration: 4                # flash for 4 seconds
+      priority: 50
+      mode: transient            # brief flash, then back to normal
+      show_only_on_turn_on: true # only flash on the off→on edge
+```
+
+**What happens:**
+1. The washing machine finishes → `binary_sensor.washing_machine` turns `on`.
+2. The signal `washing_done` is registered on the `hallway` renderer, but nothing visible happens yet — the hallway light is off and `show_only_on_turn_on` is set.
+3. Later, you walk past and a motion automation turns on `light.hallway`.
+4. Signal Lights intercepts the turn-on, applies your normal baseline brightness/color-temp, then flashes green for 4 seconds, and restores the baseline.
+5. When you mark the washing machine as unloaded (sensor goes `off`), the signal is automatically removed. Next time the light turns on, no flash.
+
+---
+
+### "Letterbox has mail" — persistent glow, even wake the light
+
+You want a light to glow blue whenever there's mail in the letterbox, regardless of whether the light was on before. Even if the light is off, it should briefly turn on to show you the signal when motion is detected nearby.
+
+**Setup:** You have a `binary_sensor.letterbox` (e.g. a contact sensor on the letterbox flap) and a `binary_sensor.front_door_motion`.
+
+```yaml
+signal_lights:
+  renderers:
+    entrance:
+      lights:
+        - light.entrance
+      time_window:
+        start: "07:00"
+        end: "22:00"
+
+  signal_rules:
+    # Persistent blue glow while mail is present
+    - rule_id: mail_persistent
+      source_entity: binary_sensor.letterbox
+      active_state: "on"
+      renderers: [entrance]
+      signal_id: mail_waiting
+      color: [30, 100, 255]     # blue
+      priority: 60
+      mode: persistent           # hold this color, don't flash
+      activate_when_off: false   # don't wake the light just for persistent
+
+    # Also flash when motion is detected, even if light is off
+    - rule_id: mail_motion_flash
+      source_entity: binary_sensor.front_door_motion
+      active_state: "on"
+      renderers: [entrance]
+      signal_id: mail_flash
+      color: [30, 100, 255]     # same blue
+      duration: 5
+      priority: 70               # higher than persistent, so this wins
+      mode: transient
+      show_only_on_turn_on: false # flash immediately on motion event
+      activate_when_off: true     # turn on the light even if it's off
+```
+
+**What happens:**
+1. Mail arrives → `binary_sensor.letterbox` turns `on` → the persistent `mail_waiting` signal is registered.
+2. If `light.entrance` is already on, it immediately switches to a blue glow at your configured brightness.
+3. If the light is off, nothing visible happens yet (persistent + `activate_when_off: false`).
+4. Motion detected at front door → the transient `mail_flash` rule fires with `activate_when_off: true`. The light turns on, flashes blue for 5 seconds, then turns off again (since it was off before and there's no reason to keep it on).
+5. When you turn the entrance light on normally (e.g. via a switch), it shows the persistent blue glow instead of the normal warm white — reminding you there's mail.
+6. You collect the mail → `binary_sensor.letterbox` goes `off` → both signals are cleared → the light returns to its normal baseline.
+
+---
+
+### "Doorbell + washing machine at the same time" — priorities
+
+When multiple signals are active, the highest priority wins. You can layer signals across the same renderer.
+
+```yaml
+signal_lights:
+  renderers:
+    kitchen:
+      lights:
+        - light.kitchen_ceiling
+        - light.kitchen_counter
+
+  signal_rules:
+    - rule_id: washing_done
+      source_entity: binary_sensor.washing_machine
+      active_state: "on"
+      renderers: [kitchen]
+      signal_id: washing_done
+      color: [0, 255, 50]
+      duration: 4
+      priority: 50
+      mode: transient
+
+    - rule_id: doorbell
+      source_entity: binary_sensor.doorbell
+      active_state: "on"
+      renderers: [kitchen]
+      signal_id: doorbell_ring
+      color: [255, 50, 0]       # red-orange
+      duration: 6
+      priority: 80               # higher than washing
+      mode: transient
+      activate_when_off: true    # doorbell is urgent, wake lights
+```
+
+If both the washing machine and the doorbell fire at the same time, the doorbell signal (priority 80) wins and is the one rendered. The washing signal stays queued — if you turn the light on again after the doorbell clears, you'll still get the green flash for the washing machine.
+
 ## License
 
 [MIT](LICENSE)
