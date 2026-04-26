@@ -1,0 +1,21 @@
+[project]
+name = "signal-lights"
+version = "0.1.0"
+description = "Home Assistant integration for priority-based signal lighting on smart bulbs"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+authors = [
+    { name = "temporaer", email = "temporaer@users.noreply.github.com" },
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
