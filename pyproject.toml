@@ -1,6 +1,6 @@
 [project]
 name = "signal-lights"
-version = "0.1.0"
+version = "0.3.0"
 description = "Home Assistant integration for priority-based signal lighting on smart bulbs"
 readme = "README.md"
 license = "MIT"
