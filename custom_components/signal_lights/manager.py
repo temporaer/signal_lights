@@ -336,21 +336,12 @@ class Renderer:
             )
             return
 
-        persistent = self.get_effective_signal("persistent")
         for light in self.lights:
             if signal.activate_when_off and not previous_on[light]:
-                if persistent is not None and self.in_time_window():
-                    baseline = baselines[light]
-                    await self._call_light_service(
-                        "turn_on",
-                        {
-                            "entity_id": light,
-                            "rgb_color": list(persistent.color),
-                            "brightness_pct": baseline.get("brightness_pct", 100),
-                        },
-                    )
-                else:
-                    await self._call_light_service("turn_off", {"entity_id": light})
+                # Light was off before we woke it — turn it back off.
+                # Any persistent signal will show next time the user
+                # intentionally turns the light on.
+                await self._call_light_service("turn_off", {"entity_id": light})
 
     async def _apply_final_state(self) -> None:
         """Apply final state. Must be called with self._lock held."""

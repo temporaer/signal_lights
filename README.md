@@ -158,9 +158,9 @@ signal_lights:
 1. Mail arrives → `binary_sensor.letterbox` turns `on` → the persistent `mail_waiting` signal is registered.
 2. If `light.entrance` is already on, it immediately switches to a blue glow at your configured brightness.
 3. If the light is off, nothing visible happens yet (persistent + `activate_when_off: false`).
-4. Motion detected at front door → the transient `mail_flash` rule fires with `activate_when_off: true`. The light turns on, flashes blue for 5 seconds, then turns off again (since it was off before and there's no reason to keep it on).
+4. Motion detected at front door → the transient `mail_flash` rule fires with `activate_when_off: true`. The light turns on, flashes blue for 5 seconds, then turns off again (it was off before, so it goes back to off). The persistent signal will show next time you intentionally turn the light on.
 5. When you turn the entrance light on normally (e.g. via a switch), it shows the persistent blue glow instead of the normal warm white — reminding you there's mail.
-6. You collect the mail → `binary_sensor.letterbox` goes `off` → both signals are cleared → the light returns to its normal baseline.
+6. You collect the mail → `binary_sensor.letterbox` goes `off` → the persistent `mail_waiting` signal clears → the light returns to its normal baseline. (The motion flash signal clears separately when `binary_sensor.front_door_motion` goes `off`.)
 
 ---
 
