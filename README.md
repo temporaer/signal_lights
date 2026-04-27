@@ -1,6 +1,11 @@
 # Signal Lights
 
+[![CI](https://github.com/temporaer/signal_lights/actions/workflows/ci.yml/badge.svg)](https://github.com/temporaer/signal_lights/actions/workflows/ci.yml)
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+[![mypy](https://img.shields.io/badge/mypy-strict-blue.svg)](https://mypy-lang.org/)
+[![ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 A Home Assistant custom integration that overlays priority-based **signal colors** onto your smart lights. Lights briefly flash or hold a color to communicate events (doorbell rang, washing machine done, etc.) and then return to their normal baseline.
 
@@ -257,6 +262,18 @@ automation:
       service: light.turn_off
       target: { entity_id: light.hallway_ceiling }
 ```
+
+## Transparency
+
+This project was **vibe-coded** — designed and implemented with significant AI assistance (GitHub Copilot). To compensate for that, we invest heavily in automated quality gates:
+
+- **Strict mypy** type checking on all source code
+- **Ruff** linting with a broad rule set
+- **60+ automated tests** covering signals, rendering, concurrency, time windows, and end-to-end scenarios
+- **CI on every push and PR** (GitHub Actions)
+- **Pre-commit hooks** to catch issues before they reach the repo
+
+Read the tests — they're the best documentation of what the code actually does. If you find a discrepancy between the README and the code, [open an issue](https://github.com/temporaer/signal_lights/issues).
 
 ## License
 
