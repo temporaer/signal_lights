@@ -46,6 +46,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["PLR2004"]
+"scripts/**" = ["T20"]
 "custom_components/signal_lights/sensor.py" = ["PLR0912", "PLR0915"]  # _build_mermaid is inherently complex
 
 [tool.mypy]

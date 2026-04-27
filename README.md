@@ -7,7 +7,7 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-A Home Assistant custom integration that overlays priority-based **signal colors** onto your smart lights. Lights briefly flash or hold a color to communicate events (doorbell rang, washing machine done, etc.) and then return to their normal baseline.
+A Home Assistant custom integration that turns your everyday lights into **context-aware notification channels**. Unlike simple "flash when event fires" automations, Signal Lights intercepts light state changes so signals appear at the right moment — when you actually walk into a room and flip the light on, not while you're asleep or away. Signals are priority-ranked, non-destructive, and automatically restore your normal lighting afterward.
 
 ## Features
 
