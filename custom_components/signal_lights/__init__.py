@@ -13,7 +13,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.typing import ConfigType
 
-from .configuration import entry_configuration, replace_entity
+from .configuration import async_title_labels, entry_configuration, replace_entity, subentry_title
 from .const import (
     CONF_KEY,
     CONF_LAMP_PROFILES,
@@ -22,6 +22,7 @@ from .const import (
     CONF_RENDERERS,
     CONF_SIGNAL_RULES,
     DATA_MANAGER,
+    DATA_TITLE_LABELS,
     DEFAULT_COLOR,
     DEFAULT_DURATION,
     DEFAULT_PRIORITY,
@@ -180,6 +181,14 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up native UI configuration and the same stable diagnostic entities."""
     data = hass.data.setdefault(DOMAIN, {})
+    labels = await async_title_labels(hass)
+    data[DATA_TITLE_LABELS] = labels
+    # Update legacy titles before registering the reload listener. Only titles
+    # change; subentry IDs, unique IDs and all configuration stay intact.
+    for item in entry.subentries.values():
+        title = subentry_title(item.subentry_type, item.data[CONF_KEY], labels)
+        if item.title != title:
+            hass.config_entries.async_update_subentry(entry, item, title=title)
     current = Manager(hass, entry_configuration(entry))
     data[DATA_MANAGER] = current
     # Service-created persistent signals survive a config-entry reload. Rules are
@@ -235,7 +244,8 @@ def _async_entity_registry_updated(
     if current:
         current.rename_entity(old, new)
     for item, data, unique_id in updates:
-        hass.config_entries.async_update_subentry(entry, item, data=data, unique_id=unique_id, title=data[CONF_KEY])
+        title = subentry_title(item.subentry_type, data[CONF_KEY], hass.data[DOMAIN][DATA_TITLE_LABELS])
+        hass.config_entries.async_update_subentry(entry, item, data=data, unique_id=unique_id, title=title)
     options = replace_entity(dict(entry.options), old, new)
     data = replace_entity(dict(entry.data), old, new)
     if options != dict(entry.options) or data != dict(entry.data):

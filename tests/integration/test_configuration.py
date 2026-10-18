@@ -64,6 +64,7 @@ async def test_user_setup_and_native_subentry_create_edit_delete(hass):
     assert result["type"] == FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
     item = next(iter(entry.subentries.values()))
+    assert item.title == "💡 Lamp group · desk"
     result = await hass.config_entries.subentries.async_init(
         (entry.entry_id, "renderer"), context={"source": SOURCE_RECONFIGURE, "subentry_id": item.subentry_id}
     )
@@ -74,6 +75,7 @@ async def test_user_setup_and_native_subentry_create_edit_delete(hass):
     assert result["type"] == FlowResultType.ABORT
     await hass.async_block_till_done()
     assert hass.data[DOMAIN][DATA_MANAGER].renderers["desk"].lights == ["light.other"]
+    assert item.title == "💡 Lamp group · desk"
     assert item.unique_id == "renderer:desk"
     hass.config_entries.async_remove_subentry(entry, item.subentry_id)
     await hass.async_block_till_done()
@@ -90,6 +92,8 @@ async def test_registry_rename_persists_lights_and_per_light_profiles(hass):
     assert config["renderers"]["living"]["lights"] == ["light.new"]
     assert "light.new" in config["lamp_profiles"]
     assert "light.old" not in config["lamp_profiles"]
+    profile = next(item for item in entry.subentries.values() if item.unique_id == "profile:light.new")
+    assert profile.title == "🎨 Light profile · light.new"
     assert hass.data[DOMAIN][DATA_MANAGER].renderers["living"].lights == ["light.new"]
     assert await hass.config_entries.async_reload(entry.entry_id)
     await hass.async_block_till_done()
@@ -216,3 +220,38 @@ async def test_partial_rule_edit_preserves_persistent_mode_and_color(hass):
     assert rule.data["config"]["source_entity"] == "input_boolean.mail"
     assert rule.data["config"]["renderers"] == ["living"]
     assert rule.data["config"]["enabled"] is False
+
+
+@pytest.mark.parametrize(
+    ("language", "prefixes"),
+    [
+        ("en", {"renderer": "💡 Lamp group", "profile": "🎨 Light profile", "rule": "🔔 Signal rule"}),
+        ("de", {"renderer": "💡 Lampengruppe", "profile": "🎨 Lichtprofil", "rule": "🔔 Signalregel"}),
+    ],
+)
+async def test_typed_titles_localize_and_upgrade_without_changing_configuration(hass, language, prefixes):
+    hass.config.language = language
+    entry = await setup_yaml(hass)
+    before = entry_configuration(entry)
+    identities = {item.subentry_id: item.unique_id for item in entry.subentries.values()}
+    for item in entry.subentries.values():
+        assert item.title == f"{prefixes[item.subentry_type]} · {item.data['key']}"
+
+    # Simulate the title-only state of an existing v1.1.0 installation.
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    for item in entry.subentries.values():
+        hass.config_entries.async_update_subentry(entry, item, title=item.data["key"])
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry_configuration(entry) == before
+    assert {item.subentry_id: item.unique_id for item in entry.subentries.values()} == identities
+    for item in entry.subentries.values():
+        assert item.title == f"{prefixes[item.subentry_type]} · {item.data['key']}"
+
+    # A further reload neither duplicates prefixes nor rewrites identifiers.
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry_configuration(entry) == before
+    for item in entry.subentries.values():
+        assert item.title == f"{prefixes[item.subentry_type]} · {item.data['key']}"

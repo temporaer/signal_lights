@@ -7,7 +7,9 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigSubentryData
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.translation import async_get_translations
 
 from .const import (
     CONF_CONFIG,
@@ -17,6 +19,9 @@ from .const import (
     CONF_NIGHT_MODE_ENTITY,
     CONF_RENDERERS,
     CONF_SIGNAL_RULES,
+    DOMAIN,
+    SUBENTRY_ICONS,
+    SUBENTRY_TYPE_NAMES,
     TYPE_PROFILE,
     TYPE_RENDERER,
     TYPE_RULE,
@@ -100,10 +105,25 @@ def import_subentries(config: dict[str, Any]) -> list[ConfigSubentryData]:
     return entries
 
 
+async def async_title_labels(hass: HomeAssistant) -> dict[str, str]:
+    """Resolve type labels using HA's configured language and integration translations."""
+    translations = await async_get_translations(hass, hass.config.language, "config_subentries", {DOMAIN})
+    return {
+        kind: translations.get(f"component.{DOMAIN}.config_subentries.{kind}.entry_type", fallback)
+        for kind, fallback in SUBENTRY_TYPE_NAMES.items()
+    }
+
+
+def subentry_title(kind: str, key: str, labels: dict[str, str] | None = None) -> str:
+    """Make entry types visible without changing identifiers or entity references."""
+    label = (labels or SUBENTRY_TYPE_NAMES)[kind]
+    return f"{SUBENTRY_ICONS[kind]} {label} · {key}"
+
+
 def _subentry(kind: str, key: str, config: dict[str, Any]) -> ConfigSubentryData:
     return {
         "subentry_type": kind,
-        "title": key,
+        "title": subentry_title(kind, key),
         "unique_id": f"{kind}:{key}",
         "data": {CONF_KEY: key, CONF_CONFIG: config},
     }
