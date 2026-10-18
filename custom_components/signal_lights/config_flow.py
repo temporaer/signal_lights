@@ -17,7 +17,7 @@ from homeassistant.config_entries import (
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 
-from .configuration import entry_configuration, import_subentries, validate_item
+from .configuration import async_title_labels, entry_configuration, import_subentries, subentry_title, validate_item
 from .const import (
     CONF_CONFIG,
     CONF_KEY,
@@ -64,6 +64,9 @@ class SignalLightsConfigFlow(ConfigFlow, domain=DOMAIN):
             subentries = import_subentries(user_input)
         except (vol.Invalid, ValueError, TypeError):
             return self.async_abort(reason="invalid_yaml")
+        labels = await async_title_labels(self.hass)
+        for item in subentries:
+            item["title"] = subentry_title(item["subentry_type"], item["data"][CONF_KEY], labels)
         night_mode = user_input.get(CONF_LAMP_PROFILES, {}).get(CONF_NIGHT_MODE_ENTITY, DEFAULT_NIGHT_MODE_ENTITY)
         return self.async_create_entry(
             title="Signal Lights", data={CONF_NIGHT_MODE_ENTITY: night_mode}, subentries=subentries
@@ -108,6 +111,7 @@ class ItemFlow(ConfigSubentryFlow):
     """Shared create/reconfigure logic with stable, immutable item identifiers."""
 
     kind: str
+    _title_labels: dict[str, str]
 
     def _schema(self, current: dict[str, Any], *, editing: bool) -> vol.Schema:
         fields: dict[Any, Any] = {}
@@ -132,9 +136,11 @@ class ItemFlow(ConfigSubentryFlow):
         return config
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
+        self._title_labels = await async_title_labels(self.hass)
         return self._step(user_input, editing=False)
 
     async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
+        self._title_labels = await async_title_labels(self.hass)
         return self._step(user_input, editing=True)
 
     @callback
@@ -162,9 +168,10 @@ class ItemFlow(ConfigSubentryFlow):
                     errors["base"] = "invalid_config"
                 else:
                     payload = {CONF_KEY: key, CONF_CONFIG: data}
+                    title = subentry_title(self.kind, key, self._title_labels)
                     if existing:
-                        return self.async_update_and_abort(entry, existing, data=payload)
-                    return self.async_create_entry(title=key, unique_id=f"{self.kind}:{key}", data=payload)
+                        return self.async_update_and_abort(entry, existing, data=payload, title=title)
+                    return self.async_create_entry(title=title, unique_id=f"{self.kind}:{key}", data=payload)
         defaults = self._encode(old)
         if user_input:
             defaults.update(user_input)

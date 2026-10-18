@@ -48,6 +48,10 @@ Only one Signal Lights integration is needed. On its integration page add:
   transient/persistent mode, duration and wake/turn-on behavior. Rules can be disabled
   without deleting them.
 
+Entries show their type directly in the title: 💡 Lamp group, 🎨 Light profile or 🔔 Signal rule
+(localized using Home Assistant’s configured language). Existing titles are upgraded automatically
+without changing identifiers, configuration or diagnostic entities.
+
 Identifiers are stable after creation because services/rules reference them. Reconfigure
 entries to edit their settings; delete them from the integration page when no longer needed.
 When deleting groups/profiles, update dependent rules/profile references as well.

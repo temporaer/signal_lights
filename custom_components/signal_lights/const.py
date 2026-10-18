@@ -32,3 +32,7 @@ TYPE_RENDERER = "renderer"
 TYPE_PROFILE = "profile"
 TYPE_RULE = "rule"
 SINGLETON_ID = "signal_lights"
+
+DATA_TITLE_LABELS = "title_labels"
+SUBENTRY_ICONS = {TYPE_RENDERER: "💡", TYPE_PROFILE: "🎨", TYPE_RULE: "🔔"}
+SUBENTRY_TYPE_NAMES = {TYPE_RENDERER: "Lamp group", TYPE_PROFILE: "Light profile", TYPE_RULE: "Signal rule"}
