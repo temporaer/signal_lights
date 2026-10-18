@@ -1,0 +1,170 @@
+{
+  "title": "Signal Lights",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Signal Lights",
+        "description": "Add lamp groups, profiles and rules after setup.",
+        "data": {
+          "night_mode_entity": "Night mode entity"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Signal Lights is already configured.",
+      "invalid_yaml": "The YAML configuration is invalid. It has not been changed."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Signal Lights",
+        "data": {
+          "night_mode_entity": "Night mode entity"
+        }
+      }
+    }
+  },
+  "config_subentries": {
+    "renderer": {
+      "entry_type": "Lamp group",
+      "initiate_flow": {
+        "user": "Lamp group: add",
+        "reconfigure": "Lamp group: edit"
+      },
+      "step": {
+        "user": {
+          "title": "Lamp group",
+          "data": {
+            "key": "Stable identifier",
+            "lights": "Lights",
+            "baseline_mode": "Baseline mode",
+            "brightness_pct": "Fixed brightness (%)",
+            "color_temp_kelvin": "Fixed color temperature (K)",
+            "profile": "Profile identifier",
+            "start": "Start of time window",
+            "end": "End of time window",
+            "night_mode_entity": "Night mode entity"
+          }
+        },
+        "reconfigure": {
+          "title": "Lamp group",
+          "data": {
+            "lights": "Lights",
+            "baseline_mode": "Baseline mode",
+            "brightness_pct": "Fixed brightness (%)",
+            "color_temp_kelvin": "Fixed color temperature (K)",
+            "profile": "Profile identifier",
+            "start": "Start of time window",
+            "end": "End of time window",
+            "night_mode_entity": "Night mode entity"
+          }
+        }
+      },
+      "error": {
+        "invalid_key": "Use letters, digits and underscores for the identifier.",
+        "already_configured": "This identifier already exists.",
+        "invalid_config": "Invalid settings or unknown profile/group identifier."
+      },
+      "abort": {
+        "reconfigure_successful": "Saved."
+      }
+    },
+    "profile": {
+      "entry_type": "Light profile",
+      "initiate_flow": {
+        "user": "Light profile: add",
+        "reconfigure": "Light profile: edit"
+      },
+      "step": {
+        "user": {
+          "title": "Light profile",
+          "data": {
+            "key": "Stable identifier",
+            "profile": "Profile identifier",
+            "brightness_day": "Day brightness (%)",
+            "brightness_night": "Night brightness (%)",
+            "kelvin_min": "Minimum color temperature (K)",
+            "kelvin_max": "Maximum color temperature (K)",
+            "exponent": "Sun curve exponent",
+            "gain": "Sun curve gain",
+            "base": "Sun curve base",
+            "divisor": "Sun curve divisor"
+          }
+        },
+        "reconfigure": {
+          "title": "Light profile",
+          "data": {
+            "profile": "Profile identifier",
+            "brightness_day": "Day brightness (%)",
+            "brightness_night": "Night brightness (%)",
+            "kelvin_min": "Minimum color temperature (K)",
+            "kelvin_max": "Maximum color temperature (K)",
+            "exponent": "Sun curve exponent",
+            "gain": "Sun curve gain",
+            "base": "Sun curve base",
+            "divisor": "Sun curve divisor"
+          }
+        }
+      },
+      "error": {
+        "invalid_key": "Use letters, digits and underscores for the identifier.",
+        "already_configured": "This identifier already exists.",
+        "invalid_config": "Invalid settings or unknown profile/group identifier."
+      },
+      "abort": {
+        "reconfigure_successful": "Saved."
+      }
+    },
+    "rule": {
+      "entry_type": "Signal rule",
+      "initiate_flow": {
+        "user": "Signal rule: add",
+        "reconfigure": "Signal rule: edit"
+      },
+      "step": {
+        "user": {
+          "title": "Signal rule",
+          "data": {
+            "key": "Stable identifier",
+            "enabled": "Enabled",
+            "source_entity": "Source entity",
+            "active_state": "Active state",
+            "renderers": "Lamp groups",
+            "signal_id": "Signal identifier",
+            "color": "Signal color",
+            "priority": "Priority",
+            "duration": "Duration (seconds)",
+            "mode": "Signal mode",
+            "show_only_on_turn_on": "Show only when a light turns on",
+            "activate_when_off": "Wake lights that are off"
+          }
+        },
+        "reconfigure": {
+          "title": "Signal rule",
+          "data": {
+            "enabled": "Enabled",
+            "source_entity": "Source entity",
+            "active_state": "Active state",
+            "renderers": "Lamp groups",
+            "signal_id": "Signal identifier",
+            "color": "Signal color",
+            "priority": "Priority",
+            "duration": "Duration (seconds)",
+            "mode": "Signal mode",
+            "show_only_on_turn_on": "Show only when a light turns on",
+            "activate_when_off": "Wake lights that are off"
+          }
+        }
+      },
+      "error": {
+        "invalid_key": "Use letters, digits and underscores for the identifier.",
+        "already_configured": "This identifier already exists.",
+        "invalid_config": "Invalid settings or unknown profile/group identifier."
+      },
+      "abort": {
+        "reconfigure_successful": "Saved."
+      }
+    }
+  }
+}

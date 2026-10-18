@@ -6,8 +6,9 @@ import re
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback, AddEntitiesCallback
 
 from .const import DATA_MANAGER, DOMAIN
 from .manager import Manager, Renderer, SignalRule
@@ -84,6 +85,7 @@ class SignalLightsDiagramSensor(SensorEntity):
             parts.append(
                 (
                     renderer_id,
+                    tuple(renderer.lights),
                     renderer.any_on(),
                     transient.signal_id if transient else None,
                     persistent.signal_id if persistent else None,
@@ -261,3 +263,15 @@ async def async_setup_platform(
     ]
     entities.append(SignalLightsDiagramSensor(manager))
     async_add_entities(entities)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
+    """Attach diagnostics to the config entry, preserving existing unique IDs."""
+    manager: Manager = hass.data[DOMAIN][DATA_MANAGER]
+    for item in entry.subentries.values():
+        if item.subentry_type == "renderer":
+            renderer = manager.renderers[item.data["key"]]
+            async_add_entities([SignalLightsRendererSensor(renderer)], config_subentry_id=item.subentry_id)
+    async_add_entities([SignalLightsDiagramSensor(manager)])

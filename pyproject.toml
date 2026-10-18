@@ -1,10 +1,14 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "signal-lights"
 version = "1.0.0"
 description = "Home Assistant integration for priority-based signal lighting on smart bulbs"
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 authors = [
     { name = "temporaer", email = "temporaer@users.noreply.github.com" },
 ]
@@ -16,6 +20,9 @@ dev = [
     "ruff>=0.4",
     "mypy>=1.10",
     "pre-commit>=4.0",
+    "homeassistant==2025.12.2",
+    "pycares==4.11.0",  # aiodns 3.5 (HA minimum) uses the pre-5.0 query API
+    "pytest-homeassistant-custom-component==0.13.300",
 ]
 
 [tool.pytest.ini_options]
@@ -23,7 +30,7 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py313"
 line-length = 120
 
 [tool.ruff.lint]
@@ -40,6 +47,7 @@ select = [
     "LOG",                # logging
 ]
 ignore = [
+    "PLR0917",            # service methods mirror HA service fields
     "PLR0913",            # too many arguments — unavoidable for signal params
     "PLR2004",            # magic numbers in tests are fine
 ]
@@ -50,7 +58,7 @@ ignore = [
 "custom_components/signal_lights/sensor.py" = ["PLR0912", "PLR0915"]  # _build_mermaid is inherently complex
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
 ignore_missing_imports = true
 strict = true
 warn_return_any = true
@@ -63,3 +71,12 @@ module = "tests.*"
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
 disallow_untyped_decorators = false
+
+[tool.setuptools]
+package-dir = {"" = "."}
+
+[tool.setuptools.packages.find]
+include = ["custom_components", "custom_components.signal_lights*"]
+
+[tool.setuptools.package-data]
+"custom_components.signal_lights" = ["*.json", "*.yaml", "translations/*.json"]

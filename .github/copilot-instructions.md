@@ -23,7 +23,7 @@ All config is in `pyproject.toml`. Tests use `asyncio_mode = "auto"` — no need
 
 ## Architecture
 
-This is a **YAML-configured Home Assistant custom integration** (no config flow). The domain is `signal_lights`.
+This is a **Home Assistant custom integration with native config-entry/subentry flows**. Existing YAML is imported once; config entries then own the configuration. The domain is `signal_lights`.
 
 **Core data flow:** `Manager` → `Renderer` → lights. `SignalRule`s watch HA entity states and push/clear `Signal`s on renderers.
 
@@ -40,13 +40,19 @@ This is a **YAML-configured Home Assistant custom integration** (no config flow)
 
 **`activate_when_off` bypasses `time_window`:** Signals with `activate_when_off: true` skip the `in_time_window()` check in both `maybe_render_immediately` and `handle_light_change`, since the user explicitly asked to wake sleeping lights.
 
+- **Configuration** (`configuration.py`): validation, lossless YAML import, effective config and exact entity-ID replacement.
+- **UI/MCP** (`config_flow.py`): singleton setup, global options and native renderer/profile/rule subentry flows. Use HA config APIs; never edit `.storage` files.
+- **Lifecycle** (`__init__.py`): config-entry setup/unload, update listener and registry-rename persistence. Reloading this integration does not restart HA.
+
 ## Testing conventions
 
-Tests use `FakeHass` (in `tests/conftest.py`), not the real HA test harness. FakeHass provides:
+Core unit tests use `FakeHass` (in `tests/conftest.py`), not the real HA test harness. FakeHass provides:
 - `_states` dict with `set_state()` / `states.get()`
 - `services.async_call` as `AsyncMock`
 - `bus.async_fire` as `MagicMock`
 - `data` dict, `async_create_task()`
+
+Tests in `tests/integration/` use a real HA fixture, with native config and subentry flows. The dev dependency pins the supported minimum HA/test-plugin pair so these are reproducible.
 
 When testing transient signals, patch `asyncio.sleep` to avoid real delays:
 ```python

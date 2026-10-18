@@ -109,6 +109,9 @@ class Renderer:
         )
         self.signals: dict[str, Signal] = {}
 
+        self._renamed_entities: dict[str, str] = {}
+        self._closed = False
+        self._transient_previous_on: dict[str, bool] | None = None
         self._lock = asyncio.Lock()
         self._last_on = False
         self._transient_gen = 0
@@ -275,7 +278,12 @@ class Renderer:
         return max(signals, key=lambda s: s.priority)
 
     async def _call_light_service(self, service: str, data: dict[str, Any]) -> None:
-        """Call a light service with error handling."""
+        """Call a light service with error handling and current entity routing."""
+        if self._closed:
+            return
+        target = data.get("entity_id")
+        if target in self._renamed_entities:
+            data = {**data, "entity_id": self._renamed_entities[target]}
         try:
             await self.hass.services.async_call(
                 LIGHT_DOMAIN, service, data, blocking=True,
@@ -326,6 +334,8 @@ class Renderer:
         if previous_on is None:
             previous_on = {light: self.is_on(light) for light in self.lights}
 
+        self._transient_previous_on = previous_on
+
         # Phase 1: apply signal color (under lock, acquired by caller)
         for light in self.lights:
             if signal.activate_when_off and not previous_on[light]:
@@ -375,12 +385,29 @@ class Renderer:
             )
             return
 
+        self._transient_previous_on = None
         for light in self.lights:
             if signal.activate_when_off and not previous_on[light]:
                 # Light was off before we woke it — turn it back off.
                 # Any persistent signal will show next time the user
                 # intentionally turns the light on.
                 await self._call_light_service("turn_off", {"entity_id": light})
+
+    async def async_shutdown(self) -> None:
+        """Restore an interrupted flash and invalidate its delayed completion."""
+        async with self._lock:
+            self._transient_gen += 1
+            if self._transient_previous_on is not None:
+                previous = self._transient_previous_on
+                self._transient_previous_on = None
+                for light, was_on in previous.items():
+                    if was_on:
+                        await self._call_light_service(
+                            "turn_on", {"entity_id": light, **self.get_baseline_for_light(light)},
+                        )
+                    else:
+                        await self._call_light_service("turn_off", {"entity_id": light})
+            self._closed = True
 
     async def _apply_final_state(self) -> None:
         """Apply final state. Must be called with self._lock held."""
@@ -551,6 +578,39 @@ class Manager:
             unsub()
         self.unsubs.clear()
         _LOGGER.debug("Signal Lights manager torn down")
+
+    async def async_shutdown(self) -> None:
+        """Stop subscriptions before retiring renderers and their delayed restores."""
+        self.teardown()
+        for renderer in self.renderers.values():
+            await renderer.async_shutdown()
+
+    def rename_entity(self, old: str, new: str) -> None:
+        """Update live routing, baselines and event subscriptions after a registry rename."""
+        from .configuration import replace_entity
+
+        self.teardown()
+        self.light_to_renderers.clear()
+        self.source_entity_to_rules.clear()
+        for renderer in self.renderers.values():
+            renderer._renamed_entities = {key: new if value == old else value
+                                          for key, value in renderer._renamed_entities.items()}
+            renderer._renamed_entities[old] = new
+            renderer.lights = [new if light == old else light for light in renderer.lights]
+            renderer.lamp_profiles = replace_entity(renderer.lamp_profiles, old, new)
+            if renderer.night_mode_entity == old:
+                renderer.night_mode_entity = new
+            if renderer._transient_previous_on and old in renderer._transient_previous_on:
+                renderer._transient_previous_on[new] = renderer._transient_previous_on.pop(old)
+            for light in renderer.lights:
+                self.light_to_renderers.setdefault(light, []).append(renderer)
+        for rule in self.rules:
+            if rule.source_entity == old:
+                rule.source_entity = new
+            self.source_entity_to_rules.setdefault(rule.source_entity, []).append(rule)
+        self._setup_listeners()
+        for renderer in self.renderers.values():
+            renderer.notify(force=True)
 
     def _apply_all_rules_initial(self) -> None:
         affected_renderers: set[Renderer] = set()
