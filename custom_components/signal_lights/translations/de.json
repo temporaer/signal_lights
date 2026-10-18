@@ -1,0 +1,170 @@
+{
+  "title": "Signal Lights",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Signal Lights",
+        "description": "Lampengruppen, Profile und Regeln nach dem Hinzufügen verwalten.",
+        "data": {
+          "night_mode_entity": "Nachtmodus-Entity"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Signal Lights ist bereits eingerichtet.",
+      "invalid_yaml": "Die YAML-Konfiguration ist ungültig. Sie wurde nicht geändert."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Signal Lights",
+        "data": {
+          "night_mode_entity": "Nachtmodus-Entity"
+        }
+      }
+    }
+  },
+  "config_subentries": {
+    "renderer": {
+      "entry_type": "Lampengruppe",
+      "initiate_flow": {
+        "user": "Lampengruppe hinzufügen",
+        "reconfigure": "Lampengruppe bearbeiten"
+      },
+      "step": {
+        "user": {
+          "title": "Lampengruppe",
+          "data": {
+            "key": "Stabile Kennung",
+            "lights": "Lampen",
+            "baseline_mode": "Grundlicht-Modus",
+            "brightness_pct": "Feste Helligkeit (%)",
+            "color_temp_kelvin": "Feste Farbtemperatur (K)",
+            "profile": "Profilkennung",
+            "start": "Beginn des Zeitfensters",
+            "end": "Ende des Zeitfensters",
+            "night_mode_entity": "Nachtmodus-Entity"
+          }
+        },
+        "reconfigure": {
+          "title": "Lampengruppe",
+          "data": {
+            "lights": "Lampen",
+            "baseline_mode": "Grundlicht-Modus",
+            "brightness_pct": "Feste Helligkeit (%)",
+            "color_temp_kelvin": "Feste Farbtemperatur (K)",
+            "profile": "Profilkennung",
+            "start": "Beginn des Zeitfensters",
+            "end": "Ende des Zeitfensters",
+            "night_mode_entity": "Nachtmodus-Entity"
+          }
+        }
+      },
+      "error": {
+        "invalid_key": "Kennung darf nur Buchstaben, Ziffern und Unterstriche enthalten.",
+        "already_configured": "Diese Kennung existiert bereits.",
+        "invalid_config": "Ungültige Einstellungen oder unbekannte Profil-/Gruppenkennung."
+      },
+      "abort": {
+        "reconfigure_successful": "Gespeichert."
+      }
+    },
+    "profile": {
+      "entry_type": "Lichtprofil",
+      "initiate_flow": {
+        "user": "Lichtprofil hinzufügen",
+        "reconfigure": "Lichtprofil bearbeiten"
+      },
+      "step": {
+        "user": {
+          "title": "Lichtprofil",
+          "data": {
+            "key": "Stabile Kennung",
+            "profile": "Profilkennung",
+            "brightness_day": "Helligkeit tagsüber (%)",
+            "brightness_night": "Helligkeit nachts (%)",
+            "kelvin_min": "Minimale Farbtemperatur (K)",
+            "kelvin_max": "Maximale Farbtemperatur (K)",
+            "exponent": "Sonnenkurve: Exponent",
+            "gain": "Sonnenkurve: Verstärkung",
+            "base": "Sonnenkurve: Basis",
+            "divisor": "Sonnenkurve: Divisor"
+          }
+        },
+        "reconfigure": {
+          "title": "Lichtprofil",
+          "data": {
+            "profile": "Profilkennung",
+            "brightness_day": "Helligkeit tagsüber (%)",
+            "brightness_night": "Helligkeit nachts (%)",
+            "kelvin_min": "Minimale Farbtemperatur (K)",
+            "kelvin_max": "Maximale Farbtemperatur (K)",
+            "exponent": "Sonnenkurve: Exponent",
+            "gain": "Sonnenkurve: Verstärkung",
+            "base": "Sonnenkurve: Basis",
+            "divisor": "Sonnenkurve: Divisor"
+          }
+        }
+      },
+      "error": {
+        "invalid_key": "Kennung darf nur Buchstaben, Ziffern und Unterstriche enthalten.",
+        "already_configured": "Diese Kennung existiert bereits.",
+        "invalid_config": "Ungültige Einstellungen oder unbekannte Profil-/Gruppenkennung."
+      },
+      "abort": {
+        "reconfigure_successful": "Gespeichert."
+      }
+    },
+    "rule": {
+      "entry_type": "Signalregel",
+      "initiate_flow": {
+        "user": "Signalregel hinzufügen",
+        "reconfigure": "Signalregel bearbeiten"
+      },
+      "step": {
+        "user": {
+          "title": "Signalregel",
+          "data": {
+            "key": "Stabile Kennung",
+            "enabled": "Aktiviert",
+            "source_entity": "Quell-Entity",
+            "active_state": "Aktiver Zustand",
+            "renderers": "Lampengruppen",
+            "signal_id": "Signalkennung",
+            "color": "Signalfarbe",
+            "priority": "Priorität",
+            "duration": "Dauer (Sekunden)",
+            "mode": "Signalmodus",
+            "show_only_on_turn_on": "Nur beim Einschalten einer Lampe anzeigen",
+            "activate_when_off": "Ausgeschaltete Lampen aufwecken"
+          }
+        },
+        "reconfigure": {
+          "title": "Signalregel",
+          "data": {
+            "enabled": "Aktiviert",
+            "source_entity": "Quell-Entity",
+            "active_state": "Aktiver Zustand",
+            "renderers": "Lampengruppen",
+            "signal_id": "Signalkennung",
+            "color": "Signalfarbe",
+            "priority": "Priorität",
+            "duration": "Dauer (Sekunden)",
+            "mode": "Signalmodus",
+            "show_only_on_turn_on": "Nur beim Einschalten einer Lampe anzeigen",
+            "activate_when_off": "Ausgeschaltete Lampen aufwecken"
+          }
+        }
+      },
+      "error": {
+        "invalid_key": "Kennung darf nur Buchstaben, Ziffern und Unterstriche enthalten.",
+        "already_configured": "Diese Kennung existiert bereits.",
+        "invalid_config": "Ungültige Einstellungen oder unbekannte Profil-/Gruppenkennung."
+      },
+      "abort": {
+        "reconfigure_successful": "Gespeichert."
+      }
+    }
+  }
+}

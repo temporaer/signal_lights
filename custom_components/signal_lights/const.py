@@ -25,3 +25,10 @@ DEFAULT_PRIORITY = 50
 DEFAULT_COLOR = [0, 255, 0]
 DEFAULT_DURATION = 3
 
+
+CONF_KEY = "key"
+CONF_CONFIG = "config"
+TYPE_RENDERER = "renderer"
+TYPE_PROFILE = "profile"
+TYPE_RULE = "rule"
+SINGLETON_ID = "signal_lights"

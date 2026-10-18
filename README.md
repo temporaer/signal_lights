@@ -4,7 +4,7 @@
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue.svg)](https://mypy-lang.org/)
 [![ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
+[![Python 3.13+](https://img.shields.io/badge/python-3.13%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 A Home Assistant custom integration that turns your everyday lights into **context-aware notification channels**. Unlike simple "flash when event fires" automations, Signal Lights intercepts light state changes so signals appear at the right moment — when you actually walk into a room and flip the light on, not while you're asleep or away. Signals are priority-ranked, non-destructive, and automatically restore your normal lighting afterward.
@@ -15,7 +15,7 @@ A Home Assistant custom integration that turns your everyday lights into **conte
 - **Transient signals** — brief color flash, then back to baseline.
 - **Persistent signals** — hold a color until cleared.
 - **Priority system** — highest-priority signal wins when multiple are active.
-- **Signal rules** — declarative YAML rules that push/clear signals based on entity state changes.
+- **Signal rules** — UI-editable rules that push/clear signals based on entity state changes.
 - **Time windows** — restrict signal rendering to specific hours. Signals with `activate_when_off: true` bypass the time window so they can wake sleeping lights anytime.
 - **Lamp profiles** — per-light brightness/color-temperature curves driven by sun elevation and night mode.
 - **Mermaid diagram sensor** — auto-generated live diagram of renderers, signals, and lights.
@@ -33,9 +33,62 @@ A Home Assistant custom integration that turns your everyday lights into **conte
 
 Copy `custom_components/signal_lights/` into your Home Assistant `config/custom_components/` directory and restart.
 
-## Configuration
+## Configuration in Home Assistant and MCP
 
-Add a `signal_lights:` block to your `configuration.yaml`:
+Requires **Home Assistant 2025.12 or newer** (Python 3.13+).
+
+Open **Settings → Devices & services → Add integration → Signal Lights**.
+Only one Signal Lights integration is needed. On its integration page add:
+
+- **Lamp group** (`renderer`): lights, baseline mode, fixed brightness/color temperature,
+  reusable profile, optional time window and night-mode entity.
+- **Light profile** (`profile`): brightness by day/night and the sun-driven color-temperature
+  curve. Use a light's full entity ID as the identifier for a per-light override.
+- **Signal rule** (`rule`): source entity/state, target groups, RGB color, priority,
+  transient/persistent mode, duration and wake/turn-on behavior. Rules can be disabled
+  without deleting them.
+
+Identifiers are stable after creation because services/rules reference them. Reconfigure
+entries to edit their settings; delete them from the integration page when no longer needed.
+When deleting groups/profiles, update dependent rules/profile references as well.
+Changes reload **only Signal Lights**, never Home Assistant. Existing diagnostic sensor
+unique IDs are preserved. Service-created persistent signals survive a reload; an interrupted
+flash is restored before its old renderer is retired, preventing delayed stale writes.
+
+### Existing YAML installations
+
+On the first start after upgrading, the integration imports the existing `signal_lights:`
+block into native config subentries, retaining group/profile/rule identifiers. Anonymous
+rules receive the same `rule_1`, `rule_2`, … IDs as before. The original YAML file is not
+modified. Once imported, **the UI configuration is authoritative**: subsequent starts do
+not overwrite edits with the old YAML. After verifying the import, the YAML block may be
+removed manually. Invalid imports are rejected without rewriting the file.
+
+Entity-registry renames are followed automatically in lamp lists, per-light profiles,
+rule sources and night-mode sources. The live routing and saved configuration both change,
+so another restart cannot bring the old entity IDs back. Entity deletion is not a rename:
+select a replacement or remove the reference manually.
+
+### MCP administration
+
+No dedicated MCP server or new file-writing permission is required. A Home Assistant MCP
+client that supports native config-entry/subentry flows can use the same forms as the UI:
+
+1. Add the `signal_lights` integration with the regular config flow.
+2. List its subentries and inspect the `renderer`, `profile` or `rule` schema.
+3. Create a subentry with `key` (stable identifier) and the schema's fields.
+4. Reconfigure it using its subentry ID, or remove it using HA's subentry API.
+
+With **ha-mcp**, use `ha_get_integration` to discover the entry and subentry schemas,
+`ha_config_set_helper(helper_type="config_subentry", entry_id=..., subentry_type="renderer", config=...)`
+to create one, and pass `subentry_id` to edit it. For example, a new renderer's fields are
+`key="living_ceiling"`, `lights=["light.living_ceiling"]` and `baseline_mode="template"`.
+Existing `push_signal`, `clear_signal` and other runtime actions remain available for
+normal automation use. Administrative flows retain HA's normal access controls.
+
+## YAML import example
+
+For an existing installation, the `signal_lights:` block in `configuration.yaml` can look like this:
 
 ```yaml
 signal_lights:
@@ -278,3 +331,16 @@ Read the tests — they're the best documentation of what the code actually does
 ## License
 
 [MIT](LICENSE)
+
+## Development
+
+```bash
+python -m pip install -e ".[dev]"
+pytest
+ruff check
+mypy custom_components/signal_lights/ tests/
+```
+
+The dev environment pins Home Assistant 2025.12.2 and its matching custom-component
+test plugin. Unit tests exercise rendering and concurrency; integration tests use real
+HA config/subentry flows, entity registry events and platform reloads.

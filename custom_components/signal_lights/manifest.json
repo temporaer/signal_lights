@@ -9,5 +9,6 @@
     "@temporaer"
   ],
   "requirements": [],
-  "dependencies": []
+  "dependencies": [],
+  "config_flow": true
 }
