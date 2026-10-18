@@ -21,6 +21,7 @@ dev = [
     "mypy>=1.10",
     "pre-commit>=4.0",
     "homeassistant==2025.12.2",
+    "pycares==4.11.0",  # aiodns 3.5 (HA minimum) uses the pre-5.0 query API
     "pytest-homeassistant-custom-component==0.13.300",
 ]
 
