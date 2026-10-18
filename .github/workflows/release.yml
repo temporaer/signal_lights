@@ -3,6 +3,9 @@ name: Release
 on:
   push:
     tags: ["v*"]
+    branches: [main]
+    paths:
+      - custom_components/signal_lights/manifest.json
 
 permissions:
   contents: write
@@ -15,7 +18,13 @@ jobs:
 
       - name: Extract tag version
         id: tag
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            version=$(python3 -c "import json; print(json.load(open('custom_components/signal_lights/manifest.json'))['version'])")
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Check manifest.json version
         run: |
@@ -45,8 +54,8 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
-      - run: pip install ruff mypy homeassistant
+          python-version: "3.13"
+      - run: pip install -e ".[dev]"
       - run: ruff check
       - run: mypy custom_components/signal_lights/ tests/
 
@@ -55,13 +64,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.12", "3.13"]
+        python-version: ["3.13"]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
-      - run: pip install -e ".[dev]" homeassistant
+      - run: pip install -e ".[dev]"
       - run: pytest --tb=short -q
 
   release:
@@ -71,6 +80,13 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Create GitHub Release
-        run: gh release create "$GITHUB_REF_NAME" --generate-notes
+        run: |
+          version=$(python3 -c "import json; print(json.load(open('custom_components/signal_lights/manifest.json'))['version'])")
+          tag="v$version"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists"
+          else
+            gh release create "$tag" --target "$GITHUB_SHA" --generate-notes --title "Signal Lights $tag"
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
